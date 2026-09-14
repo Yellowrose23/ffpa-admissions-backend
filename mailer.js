@@ -22,6 +22,11 @@ if (hasSmtpConfig) {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    // Fail fast instead of hanging if the SMTP server is unreachable or
+    // credentials are wrong — better an error in the logs than a silent hang.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 }
 
@@ -68,4 +73,32 @@ async function sendApplicationNotification(application) {
   return { sent: true, mode: 'smtp' };
 }
 
-module.exports = { sendApplicationNotification };
+async function sendPasswordResetEmail({ parentEmail, studentName, resetLink }) {
+  const notifyEmail = parentEmail;
+  const fromEmail = process.env.FROM_EMAIL || 'no-reply@ffpacademy.org';
+
+  const subject = `Password reset for ${studentName}'s FFPA account`;
+  const text = [
+    `We received a request to reset the login password for ${studentName}'s account.`,
+    ``,
+    `To set a new password, open this link (it expires in 1 hour):`,
+    resetLink,
+    ``,
+    `If you didn't request this, you can safely ignore this email — the password will not change unless the link above is used.`,
+  ].join('\n');
+
+  if (!transporter) {
+    console.log('\n[DEV MODE] SMTP is not configured, so no real email was sent.');
+    console.log('[DEV MODE] Here is the password reset email that WOULD have been sent:\n');
+    console.log(`To: ${notifyEmail}`);
+    console.log(`From: ${fromEmail}`);
+    console.log(`Subject: ${subject}`);
+    console.log(`\n${text}\n`);
+    return { sent: false, mode: 'dev' };
+  }
+
+  await transporter.sendMail({ from: fromEmail, to: notifyEmail, subject, text });
+  return { sent: true, mode: 'smtp' };
+}
+
+module.exports = { sendApplicationNotification, sendPasswordResetEmail };
